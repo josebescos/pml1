@@ -1,0 +1,98 @@
+---
+title: "Practical Machine Learning Project"
+   
+---
+
+###Synopsis
+The object of this project is to to predict the manner in which 6 participants in a quantified self movement project have performed their exercises. In order to do that a set of training data has been provided [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv). We will predict the outcome of variable "classe", and apply the predictions to the 20 test cases available in the test data set [here](https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv). We will try different machine learning algorithms until we reach a tolerable level of accuracy.
+
+###Data processing
+In order to arrive to the intended results, we have taken the following steps:
+
+####1. Loading the data and the necessary libraries
+We haved downloaded the data to our working directory and read the data, assigning the names "trainingset" and "testcases" to the two sets. We will be using the caret package to perform the machine learning prediction exercises
+
+```{r}
+trainingset = read.csv("pml-training.csv")
+testcases = read.csv("pml-testing.csv")
+
+library(caret)
+```
+
+####2. Setting the seed
+We set the state of the random number generator for the sake of reproducibility.
+
+```{r}
+set.seed(2222)
+```
+
+####3. Deleting columns of little relevance
+
+In particular, we want to clean our dataset by getting rid of those variables with near zero variance, that is, with insignificant influence in our outcome
+
+```{r}
+trainingsetclean = trainingset[ , -nzv(trainingset)]
+testcasesclean = testcases[ , -nzv(trainingset)]
+```
+
+Likewise, there are numerous variables for which there are very little data recorded. We decide to not consider those variables, setting the missing data threshold at 0.333333 (that is, we won't include in the analysis those variables where data is missing in more than one third of the records)
+
+```{r}
+deletecolumns = NULL
+for (n in 1:ncol(trainingsetclean))
+{
+  if (sum(is.na(trainingsetclean[, n])) / nrow(trainingsetclean) > 0.333333)
+  {
+    deletecolumns = c(deletecolumns, n)
+  }  
+}
+trainingsetclean = trainingsetclean[ , -deletecolumns] 
+testcasesclean = testcasesclean[ , -deletecolumns] 
+```
+
+Finally, we leave out those variables obviously not related to the exercising performance, such as user id and name or timestamps.
+
+```{r}
+trainingsetclean = trainingsetclean[ , -c(1:6)]
+testcasesclean = testcasesclean[ , -c(1:6)] 
+```
+
+After all of these is done, we have reduced the number of variables from `r ncol(trainingset)` to `r ncol(trainingsetclean)`
+
+###Dividing the set in train and tests subsets
+
+We partition the trainingsetclean set into a train set ("train") which will be used to build the models with and the test set ("test") which will be used to put the predictive abilities of the models to the test.
+
+```{r}
+partition = createDataPartition(trainingsetclean$classe, p = 0.6, list = FALSE)
+train = trainingsetclean[partition, ]
+test = trainingsetclean[-partition, ]
+```
+
+###Results
+
+####1st model: recursive partitioning
+
+We start by building a relatively simple, computation-efficient model, using the rpart method, in the hope of achieving a decent accuracy rate (that is, a low out of sample error). <b>We aim for a out of sample error below 5%</b>
+
+```{r}
+modtrainrpart = train(classe~ . , data = train, method = "rpart")
+predtestrpart = predict(modtrainrpart, newdata = test)
+confusionMatrix(predtestrpart, test$classe)
+```
+
+Unfortunately, it seems this model is more or less able to classify A, B and E classes, but it fails miserably when dealing particularly with the D class. Thus, the degree of accuracy is only a meager 50%. That prompt us to try a different method.
+
+####2nd model: boosting
+
+This is a more laborious method, but given our previous result we are ready to trade complexity for accuracy.
+
+```{r}
+modtrainboost = train(classe~ . , data = train, method = "gbm", verbose = FALSE)
+predtestboost = predict(modtrainboost, newdata = test)
+confusionMatrix(predtestboost, test$classe)
+```
+
+As expected, boosting gives much better predictive results, achieving a 96% accuracy in the test set, or a <b>4% out of sample error</b>. Some other methods, like random forest, could be tried, but given our computational limitations and the high degree of accuracy reached we choose to apply this model to the 20 test records presented in the second part of this project.
+
+After submitting the predictions to the Coursera automatic module, we obtain a 100% correct prediction rate.
